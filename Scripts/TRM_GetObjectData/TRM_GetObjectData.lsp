@@ -1,174 +1,113 @@
 ; ============================================================
-; TRM_Inspect.lsp
+; TRM_GetObjectData.lsp
 ; Version: 0.1.0
-;
 ; Purpose:
-;   Inspect a selected object and report its relevant
+;   Get data from a selected object and report its relevant
 ;   structural information.
-;
 ; Supported objects:
 ;   - LWPOLYLINE
-;   - 2D POLYLINE
+;   - 2D POLYLINE (legacy)
 ;   - 3D POLYLINE
-;
 ; Responsibility:
 ;   Identify and describe the selected object.
-;
-; Does NOT:
-;   - extract vertices
-;   - create COGO points
-;   - modify the drawing
 ; ============================================================
-
-
 ; ------------------------------------------------------------
-; TRM:GetSubclass
+; TRM:GetDXFSubclass
 ;
-; Searches the DXF data for the Civil/AutoCAD subclass that
+; Searches the DXF data for the Civil/AutoCAD DXFSubclass that
 ; identifies the actual object.
 ; ------------------------------------------------------------
-(defun TRM:GetSubclass (entityData / pair)
-  (setq pair (assoc 100 (reverse entityData)))
-  (if pair (cdr pair))
+(defun TRM:GetDXFSubclass (DXFData)
+  (cdr (assoc 100 (reverse DXFData)))
 )
-
 ; ------------------------------------------------------------
-; TRM:GetPolylineType
+; TRM:GetObjectType
 ;
 ; Converts the technical DXF classification into a human-
-; readable polyline type.
+; readable object type.
 ; ------------------------------------------------------------
-
-
-
-
-(setq TRM:*PolylineTypes*
+(setq TRM:*ObjectTypesDict*
   '(("AcDbPolyline"   . "LWPOLYLINE")
     ("AcDb2dPolyline" . "2D POLYLINE")
     ("AcDb3dPolyline" . "3D POLYLINE")
     ("AeccDbAlignment" . "Alignment")    
    )
 )
-
-(defun TRM:GetPolylineType (subclass / found)
-  (setq found (assoc subclass TRM:*PolylineTypes*))
+(defun TRM:GetObjectType (DXFSubclass / found)
+  (setq found (assoc DXFSubclass TRM:*ObjectTypesDict*))
   (if found (cdr found) "Unknown / Unsupported")
 )
-
-
 ; ------------------------------------------------------------
-; TRM:CountPolylineVertices
+; TRM:CountObjectVertices
 ;
-; Counts VERTEX child entities of a legacy POLYLINE.
+; At the moment, this function counts VERTEX child entities of a legacy POLYLINE.
 ;
 ; This function only counts them. It does not extract or
 ; transform their coordinates.
 ; ------------------------------------------------------------
-
-(defun TRM:CountPolylineVertices (entity / current count)
-
-  (setq current (entnext entity))
-  (setq count 0)
-
-  (while current
-
-    (cond
-
-      ; Vertex found
-      (
-        (= (cdr (assoc 0 (entget current))) "VERTEX")
-
-        (setq count (1+ count))
-      )
-
-      ; End of polyline
-      (
-        (= (cdr (assoc 0 (entget current))) "SEQEND")
-
-        (setq current nil)
-      )
-    )
-
-    (if current
-      (setq current (entnext current))
-    )
-  )
-
-  count
+(defun TRM:CountObjectVertices (ObjectList / len)
+  (setq len (length ObjectList))
+  len
 )
 
-
 ; ------------------------------------------------------------
-; TRM_INSPECT
+; TRM_GetObjectData
 ;
 ; Main command.
 ; ------------------------------------------------------------
-
-(defun c:TRM_INSPECT (/ selection entity entityData
-                         entityType subclass polylineType
-                         elevation vertexCount)
-
-  (prompt "\nTRM_INSPECT V.0.1.0 - Select an entity...")
-
+(defun c:TRM_GetObjectData (/ selection entity entityDXFData
+                         entityDXFType DXFSubclass entityType)
+  (prompt "\nTRM_GetObjectData V.0.1.0")
   ; ----------------------------------------------------------
-  ; Select entity
+  ; Select object also known as entity in AutoCAD.
   ; ----------------------------------------------------------
-  
-  (setq selection (entsel "\nSelect Entity: "))
-
+  (setq selection (entsel "\nSelect Object: "))
   (if selection
     (progn
 
       (setq entity     (nth 0 selection))
-      (setq entityData (entget entity))
+      (setq entityDXFData (entget entity))
+      
       ; ------------------------------------------------------
       ; Basic entity information
       ; ------------------------------------------------------
-
+      (setq entityDXFType
+            (cdr (assoc 0 entityDXFData)))
+      (setq DXFSubclass
+            (TRM:GetDXFSubclass entityDXFData))
       (setq entityType
-            (cdr (assoc 0 entityData)))
-
-      (setq subclass
-            (TRM:GetSubclass entityData))
-
-      (setq polylineType
-            (TRM:GetPolylineType subclass))
-
+            (TRM:GetObjectType DXFSubclass))
 
       ; ------------------------------------------------------
       ; Header
       ; ------------------------------------------------------
 
       (prompt "\n")
-      (prompt "\n----------------------------------------")
-      (prompt "\nTRM_INSPECT")
-      (prompt "\n----------------------------------------")
-
+      (prompt "\n=========================================")
+      (prompt "\nEntity Information")
+      (prompt "\n=========================================")
 
       ; ------------------------------------------------------
       ; Entity information
       ; ------------------------------------------------------
-
+      (prompt
+        (strcat
+          "\nDXF Entity type: "
+          entityDXFType
+        )
+      )
+      (if DXFSubclass
+        (prompt
+          (strcat
+            "\nDXF Subclass: "
+            DXFSubclass
+          )
+        )
+      )
       (prompt
         (strcat
           "\nEntity type: "
           entityType
-        )
-      )
-
-      (if subclass
-        (prompt
-          (strcat
-            "\nSubclass: "
-            subclass
-          )
-        )
-      )
-
-      (prompt
-        (strcat
-          "\nPolyline type: "
-          polylineType
         )
       )
 
@@ -177,16 +116,16 @@
       ; LWPOLYLINE
       ; ------------------------------------------------------
 
-      (if (= subclass "AcDbPolyline")
+      (if (= DXFSubclass "AcDbPolyline")
         (progn
 
           ; Global elevation
           (setq elevation
-                (cdr (assoc 38 entityData)))
+                (cdr (assoc 38 entityDXFData)))
 
           ; Vertex count
           (setq vertexCount
-                (cdr (assoc 90 entityData)))
+                (cdr (assoc 90 entityDXFData)))
 
           (if elevation
             (prompt
@@ -213,25 +152,21 @@
       ; Legacy 2D POLYLINE
       ; ------------------------------------------------------
 
-      (if (= subclass "AcDb2dPolyline")
+      (if (= DXFSubclass "AcDb2dPolyline")
         (progn
-
           ; Parent POLYLINE stores the elevation in the Z
-          ; component of group code 10.
+          ; component of group code 10 at position 3.
           (setq elevation
-                (caddr (assoc 10 entityData)))
-
-          ; Count child VERTEX entities.
-          (setq vertexCount
-                (TRM:CountPolylineVertices entity))
-
+                (nth 3 (assoc 10 entityDXFData)))
           (prompt
             (strcat
-              "\nElevation: "
+              "\nGlobal Elevation: "
               (rtos elevation 2 3)
             )
           )
-
+          ; Count child VERTEX entities.
+          (setq vertexCount
+                (TRM:CountObjectVertices (TRM:GetPolylineVertices entity)))
           (prompt
             (strcat
               "\nVertex count: "
@@ -246,14 +181,12 @@
       ; 3D POLYLINE
       ; ------------------------------------------------------
 
-      (if (= subclass "AcDb3dPolyline")
+      (if (= DXFSubclass "AcDb3dPolyline")
         (progn
-
           ; 3D POLYLINE does not use a single global elevation.
           ; Each VERTEX contains its own XYZ coordinates.
-
           (setq vertexCount
-                (TRM:CountPolylineVertices entity))
+                (TRM:CountObjectVertices (TRM:GetPolylineVertices entity)))
 
           (prompt
             "\nElevation: per vertex"
@@ -293,13 +226,12 @@
 ; ------------------------------------------------------------
 
 (defun c:TRM_ISPEZIONE ()
-  (c:TRM_INSPECT)
+  (c:TRM_GetObjectData)
 )
-
 
 ; ------------------------------------------------------------
 ; End of file
 ; ------------------------------------------------------------
 
-(princ "\nTRM_Inspect v0.1.0 loaded.")
+(princ "\nTRM_GetObjectData v0.1.0 loaded.")
 (princ)

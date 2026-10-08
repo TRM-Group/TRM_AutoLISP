@@ -1,0 +1,7 @@
+# Ignore all files in the _Backup directory
+_Backup/
+# Ignore all files in the Reports directory
+Reports
+# Ignore local files for AI Prompts and Git commits
+AI_Prompts.md
+commits.txt
